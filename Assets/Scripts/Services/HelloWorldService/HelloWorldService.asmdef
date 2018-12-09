@@ -1,0 +1,10 @@
+{
+    "name": "HelloWorldService",
+    "references": [
+        "SicroMervice"
+    ],
+    "optionalUnityReferences": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false
+}

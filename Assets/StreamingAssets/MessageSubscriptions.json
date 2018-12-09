@@ -1,0 +1,36 @@
+{
+  "ServiceSubscriptions": [
+    {
+      "AssemblyTypePair": {
+        "Assembly": "HelloWorldService",
+        "Type": "HelloWorldService"
+      },
+      "PropertyValuePairs": [
+        {
+          "Property": "Label",
+          "Value": "HelloWorld"
+        },
+        {
+          "Property": "Text",
+          "Value": "Hello World!"
+        }
+      ]
+    },
+    {
+      "AssemblyTypePair": {
+        "Assembly": "HelloWorldService",
+        "Type": "HelloWorldService"
+      },
+      "PropertyValuePairs": [
+        {
+          "Property": "Label",
+          "Value": "HelloWorld"
+        },
+        {
+          "Property": "SomeProp",
+          "Value": "HelloWorld"
+        }
+      ]
+    }
+  ]
+}
