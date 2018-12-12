@@ -1,14 +1,16 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 
 namespace HexMap
 {
-    [System.Serializable]
-    public struct HexFeatureCollection {
-
+    [Serializable]
+    public struct HexFeatureCollection
+    {
         public Transform[] prefabs;
 
-        public Transform Pick (float choice) {
-            return prefabs[(int)(choice * prefabs.Length)];
+        public Transform Pick(float choice)
+        {
+            return prefabs[(int) (choice * prefabs.Length)];
         }
     }
 }

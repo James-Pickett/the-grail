@@ -1,7 +1,7 @@
-﻿using Newtonsoft.Json;
+﻿using System.Collections.Generic;
+using Newtonsoft.Json;
 using SicroMervice.Services;
-using System.Collections.Generic;
-using Debug = UnityEngine.Debug;
+using UnityEngine;
 
 namespace SicroMervice.Messaging
 {
@@ -16,7 +16,9 @@ namespace SicroMervice.Messaging
 
             if (this[key: propertyValuePair].Contains(item: iService))
             {
-                Debug.LogWarning(message: $"Attempted to add duplicate map [Property] {propertyValuePair.Property} [Value] {propertyValuePair.Value} [Service] {iService.GetType()}");
+                Debug.LogWarning(
+                    message:
+                    $"Attempted to add duplicate map [Property] {propertyValuePair.Property} [Value] {propertyValuePair.Value} [Service] {iService.GetType()}");
             }
 
             this[key: propertyValuePair].Add(item: iService);

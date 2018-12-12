@@ -3,75 +3,95 @@ using UnityEngine.EventSystems;
 
 namespace HexMap.UI
 {
-    public class HexGameUI : MonoBehaviour {
+    public class HexGameUI : MonoBehaviour
+    {
+        private HexCell currentCell;
 
         public HexGrid grid;
 
-        HexCell currentCell;
+        private HexUnit selectedUnit;
 
-        HexUnit selectedUnit;
-
-        public void SetEditMode (bool toggle) {
+        public void SetEditMode(bool toggle)
+        {
             enabled = !toggle;
-            grid.ShowUI(!toggle);
+            grid.ShowUI(visible: !toggle);
             grid.ClearPath();
-            if (toggle) {
-                Shader.EnableKeyword("HEX_MAP_EDIT_MODE");
+            if (toggle)
+            {
+                Shader.EnableKeyword(keyword: "HEX_MAP_EDIT_MODE");
             }
-            else {
-                Shader.DisableKeyword("HEX_MAP_EDIT_MODE");
+            else
+            {
+                Shader.DisableKeyword(keyword: "HEX_MAP_EDIT_MODE");
             }
         }
 
-        void Update () {
-            if (!EventSystem.current.IsPointerOverGameObject()) {
-                if (Input.GetMouseButtonDown(0)) {
+        private void Update()
+        {
+            if (!EventSystem.current.IsPointerOverGameObject())
+            {
+                if (Input.GetMouseButtonDown(button: 0))
+                {
                     DoSelection();
                 }
-                else if (selectedUnit) {
-                    if (Input.GetMouseButtonDown(1)) {
+                else if (selectedUnit)
+                {
+                    if (Input.GetMouseButtonDown(button: 1))
+                    {
                         DoMove();
                     }
-                    else {
+                    else
+                    {
                         DoPathfinding();
                     }
                 }
             }
         }
 
-        void DoSelection () {
+        private void DoSelection()
+        {
             grid.ClearPath();
             UpdateCurrentCell();
-            if (currentCell) {
+            if (currentCell)
+            {
                 selectedUnit = currentCell.Unit;
             }
         }
 
-        void DoPathfinding () {
-            if (UpdateCurrentCell()) {
-                if (currentCell && selectedUnit.IsValidDestination(currentCell)) {
-                    grid.FindPath(selectedUnit.Location, currentCell, selectedUnit);
+        private void DoPathfinding()
+        {
+            if (UpdateCurrentCell())
+            {
+                if (currentCell && selectedUnit.IsValidDestination(cell: currentCell))
+                {
+                    grid.FindPath(fromCell: selectedUnit.Location, toCell: currentCell, unit: selectedUnit);
                 }
-                else {
+                else
+                {
                     grid.ClearPath();
                 }
             }
         }
 
-        void DoMove () {
-            if (grid.HasPath) {
-                selectedUnit.Travel(grid.GetPath());
+        private void DoMove()
+        {
+            if (grid.HasPath)
+            {
+                selectedUnit.Travel(path: grid.GetPath());
                 grid.ClearPath();
             }
         }
 
-        bool UpdateCurrentCell () {
-            HexCell cell =
-                grid.GetCell(Camera.main.ScreenPointToRay(Input.mousePosition));
-            if (cell != currentCell) {
+        private bool UpdateCurrentCell()
+        {
+            var cell =
+                grid.GetCell(ray: Camera.main.ScreenPointToRay(pos: Input.mousePosition));
+            if (cell != currentCell)
+            {
                 currentCell = cell;
                 return true;
             }
+
             return false;
         }
     }

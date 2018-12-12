@@ -2,20 +2,24 @@
 
 namespace HexMap
 {
-    public static class ListPool<T> {
+    public static class ListPool<T>
+    {
+        private static readonly Stack<List<T>> stack = new Stack<List<T>>();
 
-        static Stack<List<T>> stack = new Stack<List<T>>();
-
-        public static List<T> Get () {
-            if (stack.Count > 0) {
+        public static List<T> Get()
+        {
+            if (stack.Count > 0)
+            {
                 return stack.Pop();
             }
+
             return new List<T>();
         }
 
-        public static void Add (List<T> list) {
+        public static void Add(List<T> list)
+        {
             list.Clear();
-            stack.Push(list);
+            stack.Push(item: list);
         }
     }
 }

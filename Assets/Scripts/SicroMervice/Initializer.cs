@@ -1,10 +1,10 @@
-﻿using Newtonsoft.Json;
+﻿using System;
+using System.Collections.Generic;
+using System.Reflection;
+using Newtonsoft.Json;
 using SicroMervice.Messaging;
 using SicroMervice.Services;
-using System;
-using System.Collections.Generic;
 using UnityEngine;
-using Assembly = System.Reflection.Assembly;
 
 namespace SicroMervice
 {
@@ -15,12 +15,14 @@ namespace SicroMervice
         public static IMessageBus InitializeSystem(string config)
         {
             var messageBus = new MessageBus();
-            var subscriptionConfiguration = JsonConvert.DeserializeObject<MessageSubscriptionConfiguration>(value: config);
+            var subscriptionConfiguration =
+                JsonConvert.DeserializeObject<MessageSubscriptionConfiguration>(value: config);
             var servicesDict = new Dictionary<string, IService>();
 
             foreach (var messageSubscription in subscriptionConfiguration.ServiceSubscriptions)
             {
-                var iService = GetOrAddService(messageSubscription: messageSubscription, servicesDict: servicesDict, messageBus: messageBus);
+                var iService = GetOrAddService(messageSubscription: messageSubscription, servicesDict: servicesDict,
+                    messageBus: messageBus);
 
                 foreach (var propertyValuePair in messageSubscription.PropertyValuePairs)
                 {
@@ -31,7 +33,8 @@ namespace SicroMervice
             return messageBus;
         }
 
-        private static IService GetOrAddService(ServiceSubscription messageSubscription, Dictionary<string, IService> servicesDict, MessageBus messageBus)
+        private static IService GetOrAddService(ServiceSubscription messageSubscription,
+            Dictionary<string, IService> servicesDict, MessageBus messageBus)
         {
             IService iService;
 
@@ -46,7 +49,8 @@ namespace SicroMervice
 
                 if (assembly == null)
                 {
-                    Debug.LogError(message: $"Assembly identified in configuration, {assemblyName}, could not be loaded");
+                    Debug.LogError(
+                        message: $"Assembly identified in configuration, {assemblyName}, could not be loaded");
                     return null;
                 }
 
@@ -54,7 +58,9 @@ namespace SicroMervice
 
                 if (type == null)
                 {
-                    Debug.LogError(message: $"Service type identified in configuration, {typeName}, could not be resolved to as a {nameof(Type)}");
+                    Debug.LogError(
+                        message:
+                        $"Service type identified in configuration, {typeName}, could not be resolved to as a {nameof(Type)}");
                     return null;
                 }
 
@@ -62,7 +68,9 @@ namespace SicroMervice
 
                 if (iService == null)
                 {
-                    Debug.LogError(message: $"Service identified in configuration as {typeName} was resolved to type {type} but is not type of {typeof(IService)}");
+                    Debug.LogError(
+                        message:
+                        $"Service identified in configuration as {typeName} was resolved to type {type} but is not type of {typeof(IService)}");
                     return null;
                 }
 
@@ -70,7 +78,8 @@ namespace SicroMervice
             }
             else
             {
-                Debug.LogWarning(message: $"Attempted to create duplicate service [Assembly] {assemblyName} [Type] {typeName}");
+                Debug.LogWarning(
+                    message: $"Attempted to create duplicate service [Assembly] {assemblyName} [Type] {typeName}");
             }
 
             iService = servicesDict[key: assemblyTypeNameCombo];

@@ -5,118 +5,150 @@ using UnityEngine.UI;
 
 namespace HexMap.UI
 {
-    public class SaveLoadMenu : MonoBehaviour {
+    public class SaveLoadMenu : MonoBehaviour
+    {
+        private const int mapFileVersion = 5;
 
-        const int mapFileVersion = 5;
+        public HexGrid hexGrid;
+
+        public SaveLoadItem itemPrefab;
+
+        public RectTransform listContent;
 
         public Text menuLabel, actionButtonLabel;
 
         public InputField nameInput;
 
-        public RectTransform listContent;
+        private bool saveMode;
 
-        public SaveLoadItem itemPrefab;
-
-        public HexGrid hexGrid;
-
-        bool saveMode;
-
-        public void Open (bool saveMode) {
+        public void Open(bool saveMode)
+        {
             this.saveMode = saveMode;
-            if (saveMode) {
+            if (saveMode)
+            {
                 menuLabel.text = "Save Map";
                 actionButtonLabel.text = "Save";
             }
-            else {
+            else
+            {
                 menuLabel.text = "Load Map";
                 actionButtonLabel.text = "Load";
             }
+
             FillList();
-            gameObject.SetActive(true);
+            gameObject.SetActive(value: true);
             HexMapCamera.Locked = true;
         }
 
-        public void Close () {
-            gameObject.SetActive(false);
+        public void Close()
+        {
+            gameObject.SetActive(value: false);
             HexMapCamera.Locked = false;
         }
 
-        public void Action () {
-            string path = GetSelectedPath();
-            if (path == null) {
+        public void Action()
+        {
+            var path = GetSelectedPath();
+            if (path == null)
+            {
                 return;
             }
-            if (saveMode) {
-                Save(path);
+
+            if (saveMode)
+            {
+                Save(path: path);
             }
-            else {
-                Load(path);
+            else
+            {
+                Load(path: path);
             }
+
             Close();
         }
 
-        public void SelectItem (string name) {
+        public void SelectItem(string name)
+        {
             nameInput.text = name;
         }
 
-        public void Delete () {
-            string path = GetSelectedPath();
-            if (path == null) {
+        public void Delete()
+        {
+            var path = GetSelectedPath();
+            if (path == null)
+            {
                 return;
             }
-            if (File.Exists(path)) {
-                File.Delete(path);
+
+            if (File.Exists(path: path))
+            {
+                File.Delete(path: path);
             }
+
             nameInput.text = "";
             FillList();
         }
 
-        void FillList () {
-            for (int i = 0; i < listContent.childCount; i++) {
-                Destroy(listContent.GetChild(i).gameObject);
+        private void FillList()
+        {
+            for (var i = 0; i < listContent.childCount; i++)
+            {
+                Destroy(obj: listContent.GetChild(index: i).gameObject);
             }
-            string[] paths =
-                Directory.GetFiles(Application.persistentDataPath, "*.map");
-            Array.Sort(paths);
-            for (int i = 0; i < paths.Length; i++) {
-                SaveLoadItem item = Instantiate(itemPrefab);
+
+            var paths =
+                Directory.GetFiles(path: Application.persistentDataPath, searchPattern: "*.map");
+            Array.Sort(array: paths);
+            for (var i = 0; i < paths.Length; i++)
+            {
+                var item = Instantiate(original: itemPrefab);
                 item.menu = this;
-                item.MapName = Path.GetFileNameWithoutExtension(paths[i]);
-                item.transform.SetParent(listContent, false);
+                item.MapName = Path.GetFileNameWithoutExtension(path: paths[i]);
+                item.transform.SetParent(parent: listContent, worldPositionStays: false);
             }
         }
 
-        string GetSelectedPath () {
-            string mapName = nameInput.text;
-            if (mapName.Length == 0) {
+        private string GetSelectedPath()
+        {
+            var mapName = nameInput.text;
+            if (mapName.Length == 0)
+            {
                 return null;
             }
-            return Path.Combine(Application.persistentDataPath, mapName + ".map");
+
+            return Path.Combine(path1: Application.persistentDataPath, path2: mapName + ".map");
         }
 
-        void Save (string path) {
+        private void Save(string path)
+        {
             using (
-                BinaryWriter writer =
-                    new BinaryWriter(File.Open(path, FileMode.Create))
-            ) {
-                writer.Write(mapFileVersion);
-                hexGrid.Save(writer);
+                var writer =
+                    new BinaryWriter(output: File.Open(path: path, mode: FileMode.Create))
+            )
+            {
+                writer.Write(value: mapFileVersion);
+                hexGrid.Save(writer: writer);
             }
         }
 
-        void Load (string path) {
-            if (!File.Exists(path)) {
-                Debug.LogError("File does not exist " + path);
+        private void Load(string path)
+        {
+            if (!File.Exists(path: path))
+            {
+                Debug.LogError(message: "File does not exist " + path);
                 return;
             }
-            using (BinaryReader reader = new BinaryReader(File.OpenRead(path))) {
-                int header = reader.ReadInt32();
-                if (header <= mapFileVersion) {
-                    hexGrid.Load(reader, header);
+
+            using (var reader = new BinaryReader(input: File.OpenRead(path: path)))
+            {
+                var header = reader.ReadInt32();
+                if (header <= mapFileVersion)
+                {
+                    hexGrid.Load(reader: reader, header: header);
                     HexMapCamera.ValidatePosition();
                 }
-                else {
-                    Debug.LogWarning("Unknown map format " + header);
+                else
+                {
+                    Debug.LogWarning(message: "Unknown map format " + header);
                 }
             }
         }

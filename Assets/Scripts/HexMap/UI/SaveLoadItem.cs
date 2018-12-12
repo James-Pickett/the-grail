@@ -3,24 +3,25 @@ using UnityEngine.UI;
 
 namespace HexMap.UI
 {
-    public class SaveLoadItem : MonoBehaviour {
+    public class SaveLoadItem : MonoBehaviour
+    {
+        private string mapName;
 
         public SaveLoadMenu menu;
 
-        public string MapName {
-            get {
-                return mapName;
-            }
-            set {
+        public string MapName
+        {
+            get { return mapName; }
+            set
+            {
                 mapName = value;
-                transform.GetChild(0).GetComponent<Text>().text = value;
+                transform.GetChild(index: 0).GetComponent<Text>().text = value;
             }
         }
 
-        string mapName;
-
-        public void Select () {
-            menu.SelectItem(mapName);
+        public void Select()
+        {
+            menu.SelectItem(name: mapName);
         }
     }
 }

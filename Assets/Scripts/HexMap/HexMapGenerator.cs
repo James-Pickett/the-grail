@@ -1,777 +1,945 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace HexMap
 {
-    public class HexMapGenerator : MonoBehaviour {
+    public class HexMapGenerator : MonoBehaviour
+    {
+        public enum HemisphereMode
+        {
+            Both,
+            North,
+            South
+        }
+
+        private static readonly float[] temperatureBands = {0.1f, 0.3f, 0.6f};
+
+        private static readonly float[] moistureBands = {0.12f, 0.28f, 0.85f};
+
+        private static readonly Biome[] biomes =
+        {
+            new Biome(terrain: 0, plant: 0), new Biome(terrain: 4, plant: 0), new Biome(terrain: 4, plant: 0),
+            new Biome(terrain: 4, plant: 0),
+            new Biome(terrain: 0, plant: 0), new Biome(terrain: 2, plant: 0), new Biome(terrain: 2, plant: 1),
+            new Biome(terrain: 2, plant: 2),
+            new Biome(terrain: 0, plant: 0), new Biome(terrain: 1, plant: 0), new Biome(terrain: 1, plant: 1),
+            new Biome(terrain: 1, plant: 2),
+            new Biome(terrain: 0, plant: 0), new Biome(terrain: 1, plant: 1), new Biome(terrain: 1, plant: 2),
+            new Biome(terrain: 1, plant: 3)
+        };
+
+        private readonly List<HexDirection> flowDirections = new List<HexDirection>();
+
+        private int cellCount, landCells;
+
+        [Range(min: 20, max: 200)]
+        public int chunkSizeMax = 100;
+
+        [Range(min: 20, max: 200)]
+        public int chunkSizeMin = 30;
+
+        private List<ClimateData> climate = new List<ClimateData>();
+
+        [Range(min: 6, max: 10)]
+        public int elevationMaximum = 8;
+
+        [Range(min: -4, max: 0)]
+        public int elevationMinimum = -2;
+
+        [Range(min: 0, max: 100)]
+        public int erosionPercentage = 50;
+
+        [Range(min: 0f, max: 1f)]
+        public float evaporationFactor = 0.5f;
+
+        [Range(min: 0f, max: 1f)]
+        public float extraLakeProbability = 0.25f;
 
         public HexGrid grid;
 
-        public bool useFixedSeed;
+        public HemisphereMode hemisphere;
+
+        [Range(min: 0f, max: 1f)]
+        public float highRiseProbability = 0.25f;
+
+        [Range(min: 0f, max: 1f)]
+        public float highTemperature = 1f;
+
+        [Range(min: 0f, max: 0.5f)]
+        public float jitterProbability = 0.25f;
+
+        [Range(min: 5, max: 95)]
+        public int landPercentage = 50;
+
+        [Range(min: 0f, max: 1f)]
+        public float lowTemperature;
+
+        [Range(min: 0, max: 10)]
+        public int mapBorderX = 5;
+
+        [Range(min: 0, max: 10)]
+        public int mapBorderZ = 5;
+
+        private List<ClimateData> nextClimate = new List<ClimateData>();
+
+        [Range(min: 0f, max: 1f)]
+        public float precipitationFactor = 0.25f;
+
+        [Range(min: 0, max: 10)]
+        public int regionBorder = 5;
+
+        [Range(min: 1, max: 4)]
+        public int regionCount = 1;
+
+        private List<MapRegion> regions;
+
+        [Range(min: 0, max: 20)]
+        public int riverPercentage = 10;
+
+        [Range(min: 0f, max: 1f)]
+        public float runoffFactor = 0.25f;
+
+        private HexCellPriorityQueue searchFrontier;
+
+        private int searchFrontierPhase;
 
         public int seed;
 
-        [Range(0f, 0.5f)]
-        public float jitterProbability = 0.25f;
+        [Range(min: 0f, max: 1f)]
+        public float seepageFactor = 0.125f;
 
-        [Range(20, 200)]
-        public int chunkSizeMin = 30;
-
-        [Range(20, 200)]
-        public int chunkSizeMax = 100;
-
-        [Range(0f, 1f)]
-        public float highRiseProbability = 0.25f;
-
-        [Range(0f, 0.4f)]
+        [Range(min: 0f, max: 0.4f)]
         public float sinkProbability = 0.2f;
 
-        [Range(5, 95)]
-        public int landPercentage = 50;
-
-        [Range(1, 5)]
-        public int waterLevel = 3;
-
-        [Range(-4, 0)]
-        public int elevationMinimum = -2;
-
-        [Range(6, 10)]
-        public int elevationMaximum = 8;
-
-        [Range(0, 10)]
-        public int mapBorderX = 5;
-
-        [Range(0, 10)]
-        public int mapBorderZ = 5;
-
-        [Range(0, 10)]
-        public int regionBorder = 5;
-
-        [Range(1, 4)]
-        public int regionCount = 1;
-
-        [Range(0, 100)]
-        public int erosionPercentage = 50;
-
-        [Range(0f, 1f)]
+        [Range(min: 0f, max: 1f)]
         public float startingMoisture = 0.1f;
 
-        [Range(0f, 1f)]
-        public float evaporationFactor = 0.5f;
+        [Range(min: 0f, max: 1f)]
+        public float temperatureJitter = 0.1f;
 
-        [Range(0f, 1f)]
-        public float precipitationFactor = 0.25f;
+        private int temperatureJitterChannel;
 
-        [Range(0f, 1f)]
-        public float runoffFactor = 0.25f;
+        public bool useFixedSeed;
 
-        [Range(0f, 1f)]
-        public float seepageFactor = 0.125f;
+        [Range(min: 1, max: 5)]
+        public int waterLevel = 3;
 
         public HexDirection windDirection = HexDirection.NW;
 
-        [Range(1f, 10f)]
+        [Range(min: 1f, max: 10f)]
         public float windStrength = 4f;
 
-        [Range(0, 20)]
-        public int riverPercentage = 10;
-
-        [Range(0f, 1f)]
-        public float extraLakeProbability = 0.25f;
-
-        [Range(0f, 1f)]
-        public float lowTemperature = 0f;
-
-        [Range(0f, 1f)]
-        public float highTemperature = 1f;
-
-        public enum HemisphereMode {
-            Both, North, South
-        }
-
-        public HemisphereMode hemisphere;
-
-        [Range(0f, 1f)]
-        public float temperatureJitter = 0.1f;
-
-        HexCellPriorityQueue searchFrontier;
-
-        int searchFrontierPhase;
-
-        int cellCount, landCells;
-
-        int temperatureJitterChannel;
-
-        struct MapRegion {
-            public int xMin, xMax, zMin, zMax;
-        }
-
-        List<MapRegion> regions;
-
-        struct ClimateData {
-            public float clouds, moisture;
-        }
-
-        List<ClimateData> climate = new List<ClimateData>();
-        List<ClimateData> nextClimate = new List<ClimateData>();
-
-        List<HexDirection> flowDirections = new List<HexDirection>();
-
-        struct Biome {
-            public int terrain, plant;
-
-            public Biome (int terrain, int plant) {
-                this.terrain = terrain;
-                this.plant = plant;
-            }
-        }
-
-        static float[] temperatureBands = { 0.1f, 0.3f, 0.6f };
-
-        static float[] moistureBands = { 0.12f, 0.28f, 0.85f };
-
-        static Biome[] biomes = {
-            new Biome(0, 0), new Biome(4, 0), new Biome(4, 0), new Biome(4, 0),
-            new Biome(0, 0), new Biome(2, 0), new Biome(2, 1), new Biome(2, 2),
-            new Biome(0, 0), new Biome(1, 0), new Biome(1, 1), new Biome(1, 2),
-            new Biome(0, 0), new Biome(1, 1), new Biome(1, 2), new Biome(1, 3)
-        };
-
-        public void GenerateMap (int x, int z, bool wrapping) {
-            Random.State originalRandomState = Random.state;
-            if (!useFixedSeed) {
-                seed = Random.Range(0, int.MaxValue);
-                seed ^= (int)System.DateTime.Now.Ticks;
-                seed ^= (int)Time.unscaledTime;
+        public void GenerateMap(int x, int z, bool wrapping)
+        {
+            var originalRandomState = Random.state;
+            if (!useFixedSeed)
+            {
+                seed = Random.Range(min: 0, max: int.MaxValue);
+                seed ^= (int) DateTime.Now.Ticks;
+                seed ^= (int) Time.unscaledTime;
                 seed &= int.MaxValue;
             }
-            Random.InitState(seed);
+
+            Random.InitState(seed: seed);
 
             cellCount = x * z;
-            grid.CreateMap(x, z, wrapping);
-            if (searchFrontier == null) {
+            grid.CreateMap(x: x, z: z, wrapping: wrapping);
+            if (searchFrontier == null)
+            {
                 searchFrontier = new HexCellPriorityQueue();
             }
-            for (int i = 0; i < cellCount; i++) {
-                grid.GetCell(i).WaterLevel = waterLevel;
+
+            for (var i = 0; i < cellCount; i++)
+            {
+                grid.GetCell(cellIndex: i).WaterLevel = waterLevel;
             }
+
             CreateRegions();
             CreateLand();
             ErodeLand();
             CreateClimate();
             CreateRivers();
             SetTerrainType();
-            for (int i = 0; i < cellCount; i++) {
-                grid.GetCell(i).SearchPhase = 0;
+            for (var i = 0; i < cellCount; i++)
+            {
+                grid.GetCell(cellIndex: i).SearchPhase = 0;
             }
 
             Random.state = originalRandomState;
         }
 
-        void CreateRegions () {
-            if (regions == null) {
+        private void CreateRegions()
+        {
+            if (regions == null)
+            {
                 regions = new List<MapRegion>();
             }
-            else {
+            else
+            {
                 regions.Clear();
             }
 
-            int borderX = grid.wrapping ? regionBorder : mapBorderX;
+            var borderX = grid.wrapping ? regionBorder : mapBorderX;
             MapRegion region;
-            switch (regionCount) {
+            switch (regionCount)
+            {
                 default:
-                    if (grid.wrapping) {
+                    if (grid.wrapping)
+                    {
                         borderX = 0;
                     }
+
                     region.xMin = borderX;
                     region.xMax = grid.cellCountX - borderX;
                     region.zMin = mapBorderZ;
                     region.zMax = grid.cellCountZ - mapBorderZ;
-                    regions.Add(region);
+                    regions.Add(item: region);
                     break;
                 case 2:
-                    if (Random.value < 0.5f) {
+                    if (Random.value < 0.5f)
+                    {
                         region.xMin = borderX;
                         region.xMax = grid.cellCountX / 2 - regionBorder;
                         region.zMin = mapBorderZ;
                         region.zMax = grid.cellCountZ - mapBorderZ;
-                        regions.Add(region);
+                        regions.Add(item: region);
                         region.xMin = grid.cellCountX / 2 + regionBorder;
                         region.xMax = grid.cellCountX - borderX;
-                        regions.Add(region);
+                        regions.Add(item: region);
                     }
-                    else {
-                        if (grid.wrapping) {
+                    else
+                    {
+                        if (grid.wrapping)
+                        {
                             borderX = 0;
                         }
+
                         region.xMin = borderX;
                         region.xMax = grid.cellCountX - borderX;
                         region.zMin = mapBorderZ;
                         region.zMax = grid.cellCountZ / 2 - regionBorder;
-                        regions.Add(region);
+                        regions.Add(item: region);
                         region.zMin = grid.cellCountZ / 2 + regionBorder;
                         region.zMax = grid.cellCountZ - mapBorderZ;
-                        regions.Add(region);
+                        regions.Add(item: region);
                     }
+
                     break;
                 case 3:
                     region.xMin = borderX;
                     region.xMax = grid.cellCountX / 3 - regionBorder;
                     region.zMin = mapBorderZ;
                     region.zMax = grid.cellCountZ - mapBorderZ;
-                    regions.Add(region);
+                    regions.Add(item: region);
                     region.xMin = grid.cellCountX / 3 + regionBorder;
                     region.xMax = grid.cellCountX * 2 / 3 - regionBorder;
-                    regions.Add(region);
+                    regions.Add(item: region);
                     region.xMin = grid.cellCountX * 2 / 3 + regionBorder;
                     region.xMax = grid.cellCountX - borderX;
-                    regions.Add(region);
+                    regions.Add(item: region);
                     break;
                 case 4:
                     region.xMin = borderX;
                     region.xMax = grid.cellCountX / 2 - regionBorder;
                     region.zMin = mapBorderZ;
                     region.zMax = grid.cellCountZ / 2 - regionBorder;
-                    regions.Add(region);
+                    regions.Add(item: region);
                     region.xMin = grid.cellCountX / 2 + regionBorder;
                     region.xMax = grid.cellCountX - borderX;
-                    regions.Add(region);
+                    regions.Add(item: region);
                     region.zMin = grid.cellCountZ / 2 + regionBorder;
                     region.zMax = grid.cellCountZ - mapBorderZ;
-                    regions.Add(region);
+                    regions.Add(item: region);
                     region.xMin = borderX;
                     region.xMax = grid.cellCountX / 2 - regionBorder;
-                    regions.Add(region);
+                    regions.Add(item: region);
                     break;
             }
         }
 
-        void CreateLand () {
-            int landBudget = Mathf.RoundToInt(cellCount * landPercentage * 0.01f);
+        private void CreateLand()
+        {
+            var landBudget = Mathf.RoundToInt(f: cellCount * landPercentage * 0.01f);
             landCells = landBudget;
-            for (int guard = 0; guard < 10000; guard++) {
-                bool sink = Random.value < sinkProbability;
-                for (int i = 0; i < regions.Count; i++) {
-                    MapRegion region = regions[i];
-                    int chunkSize = Random.Range(chunkSizeMin, chunkSizeMax - 1);
-                    if (sink) {
-                        landBudget = SinkTerrain(chunkSize, landBudget, region);
+            for (var guard = 0; guard < 10000; guard++)
+            {
+                var sink = Random.value < sinkProbability;
+                for (var i = 0; i < regions.Count; i++)
+                {
+                    var region = regions[index: i];
+                    var chunkSize = Random.Range(min: chunkSizeMin, max: chunkSizeMax - 1);
+                    if (sink)
+                    {
+                        landBudget = SinkTerrain(chunkSize: chunkSize, budget: landBudget, region: region);
                     }
-                    else {
-                        landBudget = RaiseTerrain(chunkSize, landBudget, region);
-                        if (landBudget == 0) {
+                    else
+                    {
+                        landBudget = RaiseTerrain(chunkSize: chunkSize, budget: landBudget, region: region);
+                        if (landBudget == 0)
+                        {
                             return;
                         }
                     }
                 }
             }
-            if (landBudget > 0) {
-                Debug.LogWarning("Failed to use up " + landBudget + " land budget.");
+
+            if (landBudget > 0)
+            {
+                Debug.LogWarning(message: "Failed to use up " + landBudget + " land budget.");
                 landCells -= landBudget;
             }
         }
 
-        int RaiseTerrain (int chunkSize, int budget, MapRegion region) {
+        private int RaiseTerrain(int chunkSize, int budget, MapRegion region)
+        {
             searchFrontierPhase += 1;
-            HexCell firstCell = GetRandomCell(region);
+            var firstCell = GetRandomCell(region: region);
             firstCell.SearchPhase = searchFrontierPhase;
             firstCell.Distance = 0;
             firstCell.SearchHeuristic = 0;
-            searchFrontier.Enqueue(firstCell);
-            HexCoordinates center = firstCell.coordinates;
+            searchFrontier.Enqueue(cell: firstCell);
+            var center = firstCell.coordinates;
 
-            int rise = Random.value < highRiseProbability ? 2 : 1;
-            int size = 0;
-            while (size < chunkSize && searchFrontier.Count > 0) {
-                HexCell current = searchFrontier.Dequeue();
-                int originalElevation = current.Elevation;
-                int newElevation = originalElevation + rise;
-                if (newElevation > elevationMaximum) {
+            var rise = Random.value < highRiseProbability ? 2 : 1;
+            var size = 0;
+            while (size < chunkSize && searchFrontier.Count > 0)
+            {
+                var current = searchFrontier.Dequeue();
+                var originalElevation = current.Elevation;
+                var newElevation = originalElevation + rise;
+                if (newElevation > elevationMaximum)
+                {
                     continue;
                 }
+
                 current.Elevation = newElevation;
                 if (
                     originalElevation < waterLevel &&
                     newElevation >= waterLevel && --budget == 0
-                ) {
+                )
+                {
                     break;
                 }
+
                 size += 1;
 
-                for (HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++) {
-                    HexCell neighbor = current.GetNeighbor(d);
-                    if (neighbor && neighbor.SearchPhase < searchFrontierPhase) {
+                for (var d = HexDirection.NE; d <= HexDirection.NW; d++)
+                {
+                    var neighbor = current.GetNeighbor(direction: d);
+                    if (neighbor && neighbor.SearchPhase < searchFrontierPhase)
+                    {
                         neighbor.SearchPhase = searchFrontierPhase;
-                        neighbor.Distance = neighbor.coordinates.DistanceTo(center);
+                        neighbor.Distance = neighbor.coordinates.DistanceTo(other: center);
                         neighbor.SearchHeuristic =
-                            Random.value < jitterProbability ? 1: 0;
-                        searchFrontier.Enqueue(neighbor);
+                            Random.value < jitterProbability ? 1 : 0;
+                        searchFrontier.Enqueue(cell: neighbor);
                     }
                 }
             }
+
             searchFrontier.Clear();
             return budget;
         }
 
-        int SinkTerrain (int chunkSize, int budget, MapRegion region) {
+        private int SinkTerrain(int chunkSize, int budget, MapRegion region)
+        {
             searchFrontierPhase += 1;
-            HexCell firstCell = GetRandomCell(region);
+            var firstCell = GetRandomCell(region: region);
             firstCell.SearchPhase = searchFrontierPhase;
             firstCell.Distance = 0;
             firstCell.SearchHeuristic = 0;
-            searchFrontier.Enqueue(firstCell);
-            HexCoordinates center = firstCell.coordinates;
+            searchFrontier.Enqueue(cell: firstCell);
+            var center = firstCell.coordinates;
 
-            int sink = Random.value < highRiseProbability ? 2 : 1;
-            int size = 0;
-            while (size < chunkSize && searchFrontier.Count > 0) {
-                HexCell current = searchFrontier.Dequeue();
-                int originalElevation = current.Elevation;
-                int newElevation = current.Elevation - sink;
-                if (newElevation < elevationMinimum) {
+            var sink = Random.value < highRiseProbability ? 2 : 1;
+            var size = 0;
+            while (size < chunkSize && searchFrontier.Count > 0)
+            {
+                var current = searchFrontier.Dequeue();
+                var originalElevation = current.Elevation;
+                var newElevation = current.Elevation - sink;
+                if (newElevation < elevationMinimum)
+                {
                     continue;
                 }
+
                 current.Elevation = newElevation;
                 if (
                     originalElevation >= waterLevel &&
                     newElevation < waterLevel
-                ) {
+                )
+                {
                     budget += 1;
                 }
+
                 size += 1;
 
-                for (HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++) {
-                    HexCell neighbor = current.GetNeighbor(d);
-                    if (neighbor && neighbor.SearchPhase < searchFrontierPhase) {
+                for (var d = HexDirection.NE; d <= HexDirection.NW; d++)
+                {
+                    var neighbor = current.GetNeighbor(direction: d);
+                    if (neighbor && neighbor.SearchPhase < searchFrontierPhase)
+                    {
                         neighbor.SearchPhase = searchFrontierPhase;
-                        neighbor.Distance = neighbor.coordinates.DistanceTo(center);
+                        neighbor.Distance = neighbor.coordinates.DistanceTo(other: center);
                         neighbor.SearchHeuristic =
-                            Random.value < jitterProbability ? 1: 0;
-                        searchFrontier.Enqueue(neighbor);
+                            Random.value < jitterProbability ? 1 : 0;
+                        searchFrontier.Enqueue(cell: neighbor);
                     }
                 }
             }
+
             searchFrontier.Clear();
             return budget;
         }
 
-        void ErodeLand () {
-            List<HexCell> erodibleCells = ListPool<HexCell>.Get();
-            for (int i = 0; i < cellCount; i++) {
-                HexCell cell = grid.GetCell(i);
-                if (IsErodible(cell)) {
-                    erodibleCells.Add(cell);
+        private void ErodeLand()
+        {
+            var erodibleCells = ListPool<HexCell>.Get();
+            for (var i = 0; i < cellCount; i++)
+            {
+                var cell = grid.GetCell(cellIndex: i);
+                if (IsErodible(cell: cell))
+                {
+                    erodibleCells.Add(item: cell);
                 }
             }
 
-            int targetErodibleCount =
-                (int)(erodibleCells.Count * (100 - erosionPercentage) * 0.01f);
-		
-            while (erodibleCells.Count > targetErodibleCount) {
-                int index = Random.Range(0, erodibleCells.Count);
-                HexCell cell = erodibleCells[index];
-                HexCell targetCell = GetErosionTarget(cell);
+            var targetErodibleCount =
+                (int) (erodibleCells.Count * (100 - erosionPercentage) * 0.01f);
+
+            while (erodibleCells.Count > targetErodibleCount)
+            {
+                var index = Random.Range(min: 0, max: erodibleCells.Count);
+                var cell = erodibleCells[index: index];
+                var targetCell = GetErosionTarget(cell: cell);
 
                 cell.Elevation -= 1;
                 targetCell.Elevation += 1;
 
-                if (!IsErodible(cell)) {
-                    erodibleCells[index] = erodibleCells[erodibleCells.Count - 1];
-                    erodibleCells.RemoveAt(erodibleCells.Count - 1);
+                if (!IsErodible(cell: cell))
+                {
+                    erodibleCells[index: index] = erodibleCells[index: erodibleCells.Count - 1];
+                    erodibleCells.RemoveAt(index: erodibleCells.Count - 1);
                 }
 
-                for (HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++) {
-                    HexCell neighbor = cell.GetNeighbor(d);
+                for (var d = HexDirection.NE; d <= HexDirection.NW; d++)
+                {
+                    var neighbor = cell.GetNeighbor(direction: d);
                     if (
                         neighbor && neighbor.Elevation == cell.Elevation + 2 &&
-                        !erodibleCells.Contains(neighbor)
-                    ) {
-                        erodibleCells.Add(neighbor);
+                        !erodibleCells.Contains(item: neighbor)
+                    )
+                    {
+                        erodibleCells.Add(item: neighbor);
                     }
                 }
 
-                if (IsErodible(targetCell) && !erodibleCells.Contains(targetCell)) {
-                    erodibleCells.Add(targetCell);
+                if (IsErodible(cell: targetCell) && !erodibleCells.Contains(item: targetCell))
+                {
+                    erodibleCells.Add(item: targetCell);
                 }
 
-                for (HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++) {
-                    HexCell neighbor = targetCell.GetNeighbor(d);
+                for (var d = HexDirection.NE; d <= HexDirection.NW; d++)
+                {
+                    var neighbor = targetCell.GetNeighbor(direction: d);
                     if (
                         neighbor && neighbor != cell &&
                         neighbor.Elevation == targetCell.Elevation + 1 &&
-                        !IsErodible(neighbor)
-                    ) {
-                        erodibleCells.Remove(neighbor);
+                        !IsErodible(cell: neighbor)
+                    )
+                    {
+                        erodibleCells.Remove(item: neighbor);
                     }
                 }
             }
 
-            ListPool<HexCell>.Add(erodibleCells);
+            ListPool<HexCell>.Add(list: erodibleCells);
         }
 
-        bool IsErodible (HexCell cell) {
-            int erodibleElevation = cell.Elevation - 2;
-            for (HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++) {
-                HexCell neighbor = cell.GetNeighbor(d);
-                if (neighbor && neighbor.Elevation <= erodibleElevation) {
+        private bool IsErodible(HexCell cell)
+        {
+            var erodibleElevation = cell.Elevation - 2;
+            for (var d = HexDirection.NE; d <= HexDirection.NW; d++)
+            {
+                var neighbor = cell.GetNeighbor(direction: d);
+                if (neighbor && neighbor.Elevation <= erodibleElevation)
+                {
                     return true;
                 }
             }
+
             return false;
         }
 
-        HexCell GetErosionTarget (HexCell cell) {
-            List<HexCell> candidates = ListPool<HexCell>.Get();
-            int erodibleElevation = cell.Elevation - 2;
-            for (HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++) {
-                HexCell neighbor = cell.GetNeighbor(d);
-                if (neighbor && neighbor.Elevation <= erodibleElevation) {
-                    candidates.Add(neighbor);
+        private HexCell GetErosionTarget(HexCell cell)
+        {
+            var candidates = ListPool<HexCell>.Get();
+            var erodibleElevation = cell.Elevation - 2;
+            for (var d = HexDirection.NE; d <= HexDirection.NW; d++)
+            {
+                var neighbor = cell.GetNeighbor(direction: d);
+                if (neighbor && neighbor.Elevation <= erodibleElevation)
+                {
+                    candidates.Add(item: neighbor);
                 }
             }
-            HexCell target = candidates[Random.Range(0, candidates.Count)];
-            ListPool<HexCell>.Add(candidates);
+
+            var target = candidates[index: Random.Range(min: 0, max: candidates.Count)];
+            ListPool<HexCell>.Add(list: candidates);
             return target;
         }
 
-        void CreateClimate () {
+        private void CreateClimate()
+        {
             climate.Clear();
             nextClimate.Clear();
-            ClimateData initialData = new ClimateData();
+            var initialData = new ClimateData();
             initialData.moisture = startingMoisture;
-            ClimateData clearData = new ClimateData();
-            for (int i = 0; i < cellCount; i++) {
-                climate.Add(initialData);
-                nextClimate.Add(clearData);
+            var clearData = new ClimateData();
+            for (var i = 0; i < cellCount; i++)
+            {
+                climate.Add(item: initialData);
+                nextClimate.Add(item: clearData);
             }
 
-            for (int cycle = 0; cycle < 40; cycle++) {
-                for (int i = 0; i < cellCount; i++) {
-                    EvolveClimate(i);
+            for (var cycle = 0; cycle < 40; cycle++)
+            {
+                for (var i = 0; i < cellCount; i++)
+                {
+                    EvolveClimate(cellIndex: i);
                 }
-                List<ClimateData> swap = climate;
+
+                var swap = climate;
                 climate = nextClimate;
                 nextClimate = swap;
             }
         }
 
-        void EvolveClimate (int cellIndex) {
-            HexCell cell = grid.GetCell(cellIndex);
-            ClimateData cellClimate = climate[cellIndex];
+        private void EvolveClimate(int cellIndex)
+        {
+            var cell = grid.GetCell(cellIndex: cellIndex);
+            var cellClimate = climate[index: cellIndex];
 
-            if (cell.IsUnderwater) {
+            if (cell.IsUnderwater)
+            {
                 cellClimate.moisture = 1f;
                 cellClimate.clouds += evaporationFactor;
             }
-            else {
-                float evaporation = cellClimate.moisture * evaporationFactor;
+            else
+            {
+                var evaporation = cellClimate.moisture * evaporationFactor;
                 cellClimate.moisture -= evaporation;
                 cellClimate.clouds += evaporation;
             }
 
-            float precipitation = cellClimate.clouds * precipitationFactor;
+            var precipitation = cellClimate.clouds * precipitationFactor;
             cellClimate.clouds -= precipitation;
             cellClimate.moisture += precipitation;
 
-            float cloudMaximum = 1f - cell.ViewElevation / (elevationMaximum + 1f);
-            if (cellClimate.clouds > cloudMaximum) {
+            var cloudMaximum = 1f - cell.ViewElevation / (elevationMaximum + 1f);
+            if (cellClimate.clouds > cloudMaximum)
+            {
                 cellClimate.moisture += cellClimate.clouds - cloudMaximum;
                 cellClimate.clouds = cloudMaximum;
             }
 
-            HexDirection mainDispersalDirection = windDirection.Opposite();
-            float cloudDispersal = cellClimate.clouds * (1f / (5f + windStrength));
-            float runoff = cellClimate.moisture * runoffFactor * (1f / 6f);
-            float seepage = cellClimate.moisture * seepageFactor * (1f / 6f);
-            for (HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++) {
-                HexCell neighbor = cell.GetNeighbor(d);
-                if (!neighbor) {
+            var mainDispersalDirection = windDirection.Opposite();
+            var cloudDispersal = cellClimate.clouds * (1f / (5f + windStrength));
+            var runoff = cellClimate.moisture * runoffFactor * (1f / 6f);
+            var seepage = cellClimate.moisture * seepageFactor * (1f / 6f);
+            for (var d = HexDirection.NE; d <= HexDirection.NW; d++)
+            {
+                var neighbor = cell.GetNeighbor(direction: d);
+                if (!neighbor)
+                {
                     continue;
                 }
-                ClimateData neighborClimate = nextClimate[neighbor.Index];
-                if (d == mainDispersalDirection) {
+
+                var neighborClimate = nextClimate[index: neighbor.Index];
+                if (d == mainDispersalDirection)
+                {
                     neighborClimate.clouds += cloudDispersal * windStrength;
                 }
-                else {
+                else
+                {
                     neighborClimate.clouds += cloudDispersal;
                 }
 
-                int elevationDelta = neighbor.ViewElevation - cell.ViewElevation;
-                if (elevationDelta < 0) {
+                var elevationDelta = neighbor.ViewElevation - cell.ViewElevation;
+                if (elevationDelta < 0)
+                {
                     cellClimate.moisture -= runoff;
                     neighborClimate.moisture += runoff;
                 }
-                else if (elevationDelta == 0) {
+                else if (elevationDelta == 0)
+                {
                     cellClimate.moisture -= seepage;
                     neighborClimate.moisture += seepage;
                 }
 
-                nextClimate[neighbor.Index] = neighborClimate;
+                nextClimate[index: neighbor.Index] = neighborClimate;
             }
 
-            ClimateData nextCellClimate = nextClimate[cellIndex];
+            var nextCellClimate = nextClimate[index: cellIndex];
             nextCellClimate.moisture += cellClimate.moisture;
-            if (nextCellClimate.moisture > 1f) {
+            if (nextCellClimate.moisture > 1f)
+            {
                 nextCellClimate.moisture = 1f;
             }
-            nextClimate[cellIndex] = nextCellClimate;
-            climate[cellIndex] = new ClimateData();
+
+            nextClimate[index: cellIndex] = nextCellClimate;
+            climate[index: cellIndex] = new ClimateData();
         }
 
-        void CreateRivers () {
-            List<HexCell> riverOrigins = ListPool<HexCell>.Get();
-            for (int i = 0; i < cellCount; i++) {
-                HexCell cell = grid.GetCell(i);
-                if (cell.IsUnderwater) {
+        private void CreateRivers()
+        {
+            var riverOrigins = ListPool<HexCell>.Get();
+            for (var i = 0; i < cellCount; i++)
+            {
+                var cell = grid.GetCell(cellIndex: i);
+                if (cell.IsUnderwater)
+                {
                     continue;
                 }
-                ClimateData data = climate[i];
-                float weight =
+
+                var data = climate[index: i];
+                var weight =
                     data.moisture * (cell.Elevation - waterLevel) /
                     (elevationMaximum - waterLevel);
-                if (weight > 0.75f) {
-                    riverOrigins.Add(cell);
-                    riverOrigins.Add(cell);
+                if (weight > 0.75f)
+                {
+                    riverOrigins.Add(item: cell);
+                    riverOrigins.Add(item: cell);
                 }
-                if (weight > 0.5f) {
-                    riverOrigins.Add(cell);
+
+                if (weight > 0.5f)
+                {
+                    riverOrigins.Add(item: cell);
                 }
-                if (weight > 0.25f) {
-                    riverOrigins.Add(cell);
+
+                if (weight > 0.25f)
+                {
+                    riverOrigins.Add(item: cell);
                 }
             }
 
-            int riverBudget = Mathf.RoundToInt(landCells * riverPercentage * 0.01f);
-            while (riverBudget > 0 && riverOrigins.Count > 0) {
-                int index = Random.Range(0, riverOrigins.Count);
-                int lastIndex = riverOrigins.Count - 1;
-                HexCell origin = riverOrigins[index];
-                riverOrigins[index] = riverOrigins[lastIndex];
-                riverOrigins.RemoveAt(lastIndex);
+            var riverBudget = Mathf.RoundToInt(f: landCells * riverPercentage * 0.01f);
+            while (riverBudget > 0 && riverOrigins.Count > 0)
+            {
+                var index = Random.Range(min: 0, max: riverOrigins.Count);
+                var lastIndex = riverOrigins.Count - 1;
+                var origin = riverOrigins[index: index];
+                riverOrigins[index: index] = riverOrigins[index: lastIndex];
+                riverOrigins.RemoveAt(index: lastIndex);
 
-                if (!origin.HasRiver) {
-                    bool isValidOrigin = true;
-                    for (HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++) {
-                        HexCell neighbor = origin.GetNeighbor(d);
-                        if (neighbor && (neighbor.HasRiver || neighbor.IsUnderwater)) {
+                if (!origin.HasRiver)
+                {
+                    var isValidOrigin = true;
+                    for (var d = HexDirection.NE; d <= HexDirection.NW; d++)
+                    {
+                        var neighbor = origin.GetNeighbor(direction: d);
+                        if (neighbor && (neighbor.HasRiver || neighbor.IsUnderwater))
+                        {
                             isValidOrigin = false;
                             break;
                         }
                     }
-                    if (isValidOrigin) {
-                        riverBudget -= CreateRiver(origin);
+
+                    if (isValidOrigin)
+                    {
+                        riverBudget -= CreateRiver(origin: origin);
                     }
                 }
             }
 
-            if (riverBudget > 0) {
-                Debug.LogWarning("Failed to use up river budget.");
+            if (riverBudget > 0)
+            {
+                Debug.LogWarning(message: "Failed to use up river budget.");
             }
 
-            ListPool<HexCell>.Add(riverOrigins);
+            ListPool<HexCell>.Add(list: riverOrigins);
         }
 
-        int CreateRiver (HexCell origin) {
-            int length = 1;
-            HexCell cell = origin;
-            HexDirection direction = HexDirection.NE;
-            while (!cell.IsUnderwater) {
-                int minNeighborElevation = int.MaxValue;
+        private int CreateRiver(HexCell origin)
+        {
+            var length = 1;
+            var cell = origin;
+            var direction = HexDirection.NE;
+            while (!cell.IsUnderwater)
+            {
+                var minNeighborElevation = int.MaxValue;
                 flowDirections.Clear();
-                for (HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++) {
-                    HexCell neighbor = cell.GetNeighbor(d);
-                    if (!neighbor) {
+                for (var d = HexDirection.NE; d <= HexDirection.NW; d++)
+                {
+                    var neighbor = cell.GetNeighbor(direction: d);
+                    if (!neighbor)
+                    {
                         continue;
                     }
 
-                    if (neighbor.Elevation < minNeighborElevation) {
+                    if (neighbor.Elevation < minNeighborElevation)
+                    {
                         minNeighborElevation = neighbor.Elevation;
                     }
 
-                    if (neighbor == origin || neighbor.HasIncomingRiver) {
+                    if (neighbor == origin || neighbor.HasIncomingRiver)
+                    {
                         continue;
                     }
 
-                    int delta = neighbor.Elevation - cell.Elevation;
-                    if (delta > 0) {
+                    var delta = neighbor.Elevation - cell.Elevation;
+                    if (delta > 0)
+                    {
                         continue;
                     }
 
-                    if (neighbor.HasOutgoingRiver) {
-                        cell.SetOutgoingRiver(d);
+                    if (neighbor.HasOutgoingRiver)
+                    {
+                        cell.SetOutgoingRiver(direction: d);
                         return length;
                     }
 
-                    if (delta < 0) {
-                        flowDirections.Add(d);
-                        flowDirections.Add(d);
-                        flowDirections.Add(d);
+                    if (delta < 0)
+                    {
+                        flowDirections.Add(item: d);
+                        flowDirections.Add(item: d);
+                        flowDirections.Add(item: d);
                     }
+
                     if (
                         length == 1 ||
-                        (d != direction.Next2() && d != direction.Previous2())
-                    ) {
-                        flowDirections.Add(d);
+                        d != direction.Next2() && d != direction.Previous2()
+                    )
+                    {
+                        flowDirections.Add(item: d);
                     }
-                    flowDirections.Add(d);
+
+                    flowDirections.Add(item: d);
                 }
 
-                if (flowDirections.Count == 0) {
-                    if (length == 1) {
+                if (flowDirections.Count == 0)
+                {
+                    if (length == 1)
+                    {
                         return 0;
                     }
 
-                    if (minNeighborElevation >= cell.Elevation) {
+                    if (minNeighborElevation >= cell.Elevation)
+                    {
                         cell.WaterLevel = minNeighborElevation;
-                        if (minNeighborElevation == cell.Elevation) {
+                        if (minNeighborElevation == cell.Elevation)
+                        {
                             cell.Elevation = minNeighborElevation - 1;
                         }
                     }
+
                     break;
                 }
 
-                direction = flowDirections[Random.Range(0, flowDirections.Count)];
-                cell.SetOutgoingRiver(direction);
+                direction = flowDirections[index: Random.Range(min: 0, max: flowDirections.Count)];
+                cell.SetOutgoingRiver(direction: direction);
                 length += 1;
 
                 if (
                     minNeighborElevation >= cell.Elevation &&
                     Random.value < extraLakeProbability
-                ) {
+                )
+                {
                     cell.WaterLevel = cell.Elevation;
                     cell.Elevation -= 1;
                 }
 
-                cell = cell.GetNeighbor(direction);
+                cell = cell.GetNeighbor(direction: direction);
             }
+
             return length;
         }
 
-        void SetTerrainType () {
-            temperatureJitterChannel = Random.Range(0, 4);
-            int rockDesertElevation =
+        private void SetTerrainType()
+        {
+            temperatureJitterChannel = Random.Range(min: 0, max: 4);
+            var rockDesertElevation =
                 elevationMaximum - (elevationMaximum - waterLevel) / 2;
-		
-            for (int i = 0; i < cellCount; i++) {
-                HexCell cell = grid.GetCell(i);
-                float temperature = DetermineTemperature(cell);
-                float moisture = climate[i].moisture;
-                if (!cell.IsUnderwater) {
-                    int t = 0;
-                    for (; t < temperatureBands.Length; t++) {
-                        if (temperature < temperatureBands[t]) {
-                            break;
-                        }
-                    }
-                    int m = 0;
-                    for (; m < moistureBands.Length; m++) {
-                        if (moisture < moistureBands[m]) {
-                            break;
-                        }
-                    }
-                    Biome cellBiome = biomes[t * 4 + m];
 
-                    if (cellBiome.terrain == 0) {
-                        if (cell.Elevation >= rockDesertElevation) {
+            for (var i = 0; i < cellCount; i++)
+            {
+                var cell = grid.GetCell(cellIndex: i);
+                var temperature = DetermineTemperature(cell: cell);
+                var moisture = climate[index: i].moisture;
+                if (!cell.IsUnderwater)
+                {
+                    var t = 0;
+                    for (; t < temperatureBands.Length; t++)
+                    {
+                        if (temperature < temperatureBands[t])
+                        {
+                            break;
+                        }
+                    }
+
+                    var m = 0;
+                    for (; m < moistureBands.Length; m++)
+                    {
+                        if (moisture < moistureBands[m])
+                        {
+                            break;
+                        }
+                    }
+
+                    var cellBiome = biomes[t * 4 + m];
+
+                    if (cellBiome.terrain == 0)
+                    {
+                        if (cell.Elevation >= rockDesertElevation)
+                        {
                             cellBiome.terrain = 3;
                         }
                     }
-                    else if (cell.Elevation == elevationMaximum) {
+                    else if (cell.Elevation == elevationMaximum)
+                    {
                         cellBiome.terrain = 4;
                     }
 
-                    if (cellBiome.terrain == 4) {
+                    if (cellBiome.terrain == 4)
+                    {
                         cellBiome.plant = 0;
                     }
-                    else if (cellBiome.plant < 3 && cell.HasRiver) {
+                    else if (cellBiome.plant < 3 && cell.HasRiver)
+                    {
                         cellBiome.plant += 1;
                     }
 
                     cell.TerrainTypeIndex = cellBiome.terrain;
                     cell.PlantLevel = cellBiome.plant;
                 }
-                else {
+                else
+                {
                     int terrain;
-                    if (cell.Elevation == waterLevel - 1) {
+                    if (cell.Elevation == waterLevel - 1)
+                    {
                         int cliffs = 0, slopes = 0;
                         for (
-                            HexDirection d = HexDirection.NE; d <= HexDirection.NW; d++
-                        ) {
-                            HexCell neighbor = cell.GetNeighbor(d);
-                            if (!neighbor) {
+                            var d = HexDirection.NE;
+                            d <= HexDirection.NW;
+                            d++
+                        )
+                        {
+                            var neighbor = cell.GetNeighbor(direction: d);
+                            if (!neighbor)
+                            {
                                 continue;
                             }
-                            int delta = neighbor.Elevation - cell.WaterLevel;
-                            if (delta == 0) {
+
+                            var delta = neighbor.Elevation - cell.WaterLevel;
+                            if (delta == 0)
+                            {
                                 slopes += 1;
                             }
-                            else if (delta > 0) {
+                            else if (delta > 0)
+                            {
                                 cliffs += 1;
                             }
                         }
 
-                        if (cliffs + slopes > 3) {
+                        if (cliffs + slopes > 3)
+                        {
                             terrain = 1;
                         }
-                        else if (cliffs > 0) {
+                        else if (cliffs > 0)
+                        {
                             terrain = 3;
                         }
-                        else if (slopes > 0) {
+                        else if (slopes > 0)
+                        {
                             terrain = 0;
                         }
-                        else {
+                        else
+                        {
                             terrain = 1;
                         }
                     }
-                    else if (cell.Elevation >= waterLevel) {
+                    else if (cell.Elevation >= waterLevel)
+                    {
                         terrain = 1;
                     }
-                    else if (cell.Elevation < 0) {
+                    else if (cell.Elevation < 0)
+                    {
                         terrain = 3;
                     }
-                    else {
+                    else
+                    {
                         terrain = 2;
                     }
 
-                    if (terrain == 1 && temperature < temperatureBands[0]) {
+                    if (terrain == 1 && temperature < temperatureBands[0])
+                    {
                         terrain = 2;
                     }
+
                     cell.TerrainTypeIndex = terrain;
                 }
             }
         }
 
-        float DetermineTemperature (HexCell cell) {
-            float latitude = (float)cell.coordinates.Z / grid.cellCountZ;
-            if (hemisphere == HemisphereMode.Both) {
+        private float DetermineTemperature(HexCell cell)
+        {
+            var latitude = (float) cell.coordinates.Z / grid.cellCountZ;
+            if (hemisphere == HemisphereMode.Both)
+            {
                 latitude *= 2f;
-                if (latitude > 1f) {
+                if (latitude > 1f)
+                {
                     latitude = 2f - latitude;
                 }
             }
-            else if (hemisphere == HemisphereMode.North) {
+            else if (hemisphere == HemisphereMode.North)
+            {
                 latitude = 1f - latitude;
             }
 
-            float temperature =
-                Mathf.LerpUnclamped(lowTemperature, highTemperature, latitude);
+            var temperature =
+                Mathf.LerpUnclamped(a: lowTemperature, b: highTemperature, t: latitude);
 
             temperature *= 1f - (cell.ViewElevation - waterLevel) /
                            (elevationMaximum - waterLevel + 1f);
 
-            float jitter =
-                HexMetrics.SampleNoise(cell.Position * 0.1f)[temperatureJitterChannel];
+            var jitter =
+                HexMetrics.SampleNoise(position: cell.Position * 0.1f)[index: temperatureJitterChannel];
 
             temperature += (jitter * 2f - 1f) * temperatureJitter;
 
             return temperature;
         }
 
-        HexCell GetRandomCell (MapRegion region) {
+        private HexCell GetRandomCell(MapRegion region)
+        {
             return grid.GetCell(
-                Random.Range(region.xMin, region.xMax),
-                Random.Range(region.zMin, region.zMax)
+                xOffset: Random.Range(min: region.xMin, max: region.xMax),
+                zOffset: Random.Range(min: region.zMin, max: region.zMax)
             );
+        }
+
+        private struct MapRegion
+        {
+            public int xMin, xMax, zMin, zMax;
+        }
+
+        private struct ClimateData
+        {
+            public float clouds, moisture;
+        }
+
+        private struct Biome
+        {
+            public int terrain, plant;
+
+            public Biome(int terrain, int plant)
+            {
+                this.terrain = terrain;
+                this.plant = plant;
+            }
         }
     }
 }

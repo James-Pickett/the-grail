@@ -1,14 +1,13 @@
-﻿using Newtonsoft.Json;
-using SicroMervice;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json;
+using SicroMervice;
 using UnityEngine;
-
 
 public class ServicesManager : MonoBehaviour
 {
     // Use this for initialization
-    void Start ()
+    private void Start()
     {
         var configFilePath = $"{Application.dataPath}/StreamingAssets/MessageSubscriptions.json";
 
@@ -20,8 +19,9 @@ public class ServicesManager : MonoBehaviour
 
         var messageSubscriptions = File.ReadAllText(path: configFilePath);
 
-        var testMessage = new Dictionary<string, string> { { "Label", "HelloWorld" }, { "Text", "Hello World!" } };
+        var testMessage = new Dictionary<string, string> {{"Label", "HelloWorld"}, {"Text", "Hello World!"}};
 
-        Initializer.InitializeSystem(config: messageSubscriptions).QueueMessage(message: JsonConvert.SerializeObject(value: testMessage));
+        Initializer.InitializeSystem(config: messageSubscriptions)
+            .QueueMessage(message: JsonConvert.SerializeObject(value: testMessage));
     }
 }
